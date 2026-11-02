@@ -1,0 +1,16 @@
+# Morph needs these Python packages. The start scripts install them for you.
+
+flask>=3.0              # the web server
+waitress>=3.0           # a sturdier server for big uploads
+pillow>=11.2            # images (PNG, JPG, WebP, AVIF, GIF, TIFF, ICO, ...)
+pillow-heif>=0.18       # iPhone HEIC photos
+pypdf>=5.0              # PDF tools (merge, split, compress, rotate)
+pypdfium2>=4.30         # PDF to image
+pyyaml>=6.0             # YAML
+openpyxl>=3.1           # Excel without LibreOffice
+fonttools>=4.50         # fonts
+brotli>=1.1             # WOFF2 fonts
+py7zr>=0.21             # 7Z archives
+imageio-ffmpeg>=0.5     # a ready-made copy of FFmpeg (audio + video)
+pypandoc_binary>=1.13   # a ready-made copy of Pandoc (Markdown, LaTeX, EPUB, ...)
+yt-dlp[default]         # YouTube and other video sites
