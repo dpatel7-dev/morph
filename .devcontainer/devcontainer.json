@@ -1,0 +1,23 @@
+{
+  "name": "Morph",
+  "build": { "dockerfile": "Dockerfile" },
+
+  // Install the Python packages once, when the codespace is created
+  "postCreateCommand": "pip3 install --user -r requirements.txt",
+
+  // Every time you open the codespace: refresh the YouTube downloader, then start the website
+  "postAttachCommand": "pip3 install --user -q -U 'yt-dlp[default]'; python app.py",
+
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": { "label": "Morph website", "onAutoForward": "openBrowser" }
+  },
+  "containerEnv": {
+    "MORPH_NO_BROWSER": "1",
+    "QT_QPA_PLATFORM": "offscreen"
+  },
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] },
+    "vscode": { "extensions": ["ms-python.python"] }
+  }
+}
