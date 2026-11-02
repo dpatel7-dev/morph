@@ -80,8 +80,11 @@ def stem_of(name, fmt_key):
     return name.rsplit(".", 1)[0] if "." in name else name
 
 
-def error(msg, code=400):
-    return jsonify({"error": msg}), code
+def error(msg, code=400, kind=None):
+    body = {"error": msg}
+    if kind:
+        body["code"] = kind
+    return jsonify(body), code
 
 
 # Each visitor gets a private, random id in a cookie. Jobs are tied to it, so one
@@ -181,8 +184,8 @@ def static_files(name):
 
 @app.get("/api/catalogue")
 def api_catalogue():
-    return jsonify(CATALOGUE | {"tools": TOOLS, "status": tools.describe(), "youtube": youtube.status(),
-                                "max_upload_mb": MAX_MB})
+    yt = youtube.status() | {"signed_in": youtube.has_cookies(None if g.new_sid else g.sid)}
+    return jsonify(CATALOGUE | {"tools": TOOLS, "status": tools.describe(), "youtube": yt, "max_upload_mb": MAX_MB})
 
 
 @app.post("/api/convert")
@@ -267,9 +270,31 @@ def api_tool(name):
 def api_yt_info():
     data = request.get_json(silent=True) or {}
     try:
-        return jsonify(youtube.info(data.get("url")))
+        return jsonify(youtube.info(data.get("url"), None if g.new_sid else g.sid))
+    except ConversionError as e:
+        return error(str(e), kind=getattr(e, "code", None))
+
+
+@app.post("/api/youtube/cookies")
+def api_yt_cookies_save():
+    """Save this visitor's YouTube sign-in (a cookies.txt export). Only YouTube cookies are kept."""
+    if g.new_sid:
+        return error("Open the Morph website first, then upload your cookies there.")
+    up = request.files.get("file")
+    if not up:
+        return error("Choose your cookies.txt file.")
+    try:
+        count = youtube.save_cookies(g.sid, up.read(youtube.MAX_COOKIE_BYTES + 1))
     except ConversionError as e:
         return error(str(e))
+    return jsonify({"signed_in": True, "cookies": count})
+
+
+@app.delete("/api/youtube/cookies")
+def api_yt_cookies_remove():
+    if not g.new_sid:
+        youtube.remove_cookies(g.sid)
+    return jsonify({"signed_in": False})
 
 
 @app.post("/api/youtube/download")
@@ -282,7 +307,7 @@ def api_yt_download():
     title = str(data.get("title") or "Video")[:80]
     job = jobs.create("youtube", f"{title} → {fmt.upper()}", owner=owner_id())
     jobs.submit(job, youtube.download, job, data.get("url"), fmt, quality, bool(data.get("cover", True)),
-                job.dir / "out")
+                job.dir / "out", None if g.new_sid else g.sid)
     return jsonify(job.to_dict())
 
 

@@ -106,6 +106,26 @@ Click the **sliders icon** (next to the format) to see the settings for that fil
 
 It also works with many other video sites. Leave **Add title, artist and cover art** switched on so your music app shows the right name and picture.
 
+### If YouTube says "Sign in to confirm you're not a bot"
+
+YouTube blocks many cloud computers, including Codespaces, until they prove a real person is using them. The fix is to let Morph use your YouTube sign-in. It takes about 2 minutes, and when it's needed Morph opens these steps for you:
+
+1. Add the free **Get cookies.txt LOCALLY** extension to Chrome or Edge, or **cookies.txt** to Firefox.
+2. In the extension's settings, turn on **Allow in Incognito** (Firefox: **Run in Private Windows**).
+3. Open a **private window** and sign in to YouTube. A spare Google account is safest.
+4. While you're on youtube.com, click the extension and **export** the cookies. A `.txt` file downloads.
+5. Close the private window **without signing out**.
+6. In Morph's YouTube page, click **Upload cookies.txt** and pick that file. Morph tries your video again by itself.
+
+![The YouTube sign-in steps in Morph](docs/images/youtube-signin.png)
+
+**Good to know**
+- Morph keeps **only the YouTube cookies** from the file (it throws away any others), stores them privately, and uses them **only for your downloads**. Other people using your Morph can't use your sign-in.
+- To stop using it, click **Manage sign-in → Remove my sign-in** on the YouTube page.
+- The sign-in wears out after a while. If the message comes back, export a fresh file and upload it again.
+- YouTube may limit accounts that download a lot, which is why a spare account is the safest choice.
+- Running Morph **on your own computer** usually avoids the message completely, because home internet isn't blocked the way cloud computers are.
+
 > Only download videos you own or have permission to save. Downloading may break a site's terms of service.
 
 ---
@@ -177,7 +197,8 @@ It only works while your codespace is running. Switch it back to **Private** whe
 
 | Problem | What to do |
 |---|---|
-| **A YouTube video won't download** | YouTube changes often, so update the downloader: in the terminal running Morph, press `Ctrl` + `C`, type `pip3 install --user -U "yt-dlp[default]"`, press `Enter`, then start Morph again with `python app.py`. (Reopening the codespace also does this for you.) If it says *"Sign in to confirm you're not a bot"*, YouTube is blocking the cloud computer. Wait a while and try again, or run Morph on your own computer. |
+| **YouTube says "confirm you're not a bot"** | Follow the [sign-in steps](#if-youtube-says-sign-in-to-confirm-youre-not-a-bot). If you've already signed in and it comes back, your sign-in has worn out: export and upload a fresh cookies file. |
+| **A YouTube video won't download for another reason** | YouTube changes often, so update the downloader: in the terminal running Morph, press `Ctrl` + `C`, type `pip3 install --user -U "yt-dlp[default]"`, press `Enter`, then start Morph again with `python app.py`. (Reopening the codespace also does this for you.) |
 | **The Morph tab says it can't connect** | The terminal running Morph was closed. In Codespaces, open a new terminal (**☰ menu → Terminal → New Terminal**), type `python app.py`, and press `Enter`. |
 | **The codespace is stuck setting up** | The first setup can take 10 minutes. If it fails, press `Ctrl` + `Shift` + `P`, type **Rebuild Container**, and press `Enter`. |
 | **A format is missing from the list** | That file type can't be converted to that format. Check the **Formats** page to see what your file can become. |
@@ -251,3 +272,5 @@ def my_converter(ctx):
 ```
 
 **Settings** (environment variables): `MORPH_PORT` (8080), `MORPH_MAX_UPLOAD_MB` (4096), `MORPH_KEEP_MINUTES` (60), `MORPH_MAX_ACTIVE` (12 per visitor), `MORPH_WORKERS`, `MORPH_HOST`, and `MORPH_BEHIND_PROXY=1` when hosting behind nginx or Caddy.
+
+**YouTube sign-in for the whole server** (instead of each visitor uploading their own): `MORPH_YT_COOKIES=/path/to/cookies.txt`, or `MORPH_YT_COOKIES_FROM_BROWSER=firefox` when Morph runs on the same computer as that browser, or `MORPH_YT_PROXY=http://user:pass@host:port` to route YouTube through a proxy. Visitors' own uploaded sign-ins are stored in `~/.morph/youtube-cookies` (change it with `MORPH_COOKIE_DIR`).

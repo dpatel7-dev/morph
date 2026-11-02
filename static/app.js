@@ -102,7 +102,11 @@
     const r = await fetch(path, opts);
     let body = null;
     try { body = await r.json(); } catch (e) { /* not JSON */ }
-    if (!r.ok) throw new Error((body && body.error) || `Request failed (${r.status})`);
+    if (!r.ok) {
+      const err = new Error((body && body.error) || `Request failed (${r.status})`);
+      err.code = body && body.code;
+      throw err;
+    }
     return body;
   }
   function download(href) {
@@ -762,6 +766,8 @@
       ep("POST", "/api/tools/{tool}", "Multipart form with one or more files fields. Tools: merge-pdf, split-pdf, compress-pdf, rotate-pdf, images-to-pdf, zip."),
       ep("POST", "/api/youtube/info", 'JSON {"url": "…"}: title, channel, duration, thumbnail and available qualities.'),
       ep("POST", "/api/youtube/download", 'JSON {"url", "format", "quality", "cover"}. Returns a job.'),
+      ep("POST", "/api/youtube/cookies", "Multipart form with a cookies.txt file: lets YouTube downloads for this visitor use a signed-in account. Errors that need this come back with \"code\": \"needs_cookies\"."),
+      ep("DELETE", "/api/youtube/cookies", "Removes this visitor's saved YouTube sign-in."),
       h("p", {}, `In a browser, jobs are tied to the visitor's cookie, so nobody else can open them. From scripts without a cookie, the job id works like a private link: keep it to yourself. Finished files are deleted after ${state.cat.site.keep_minutes} minutes.`),
       h("h2", {}, "Engines on this server"),
       h("ul", { class: "engines" }, engines.map(([n, on, what]) => h("li", { class: on ? "on" : "off", title: what }, h("i"), n, h("small", { class: "muted" }, on ? "" : " (not installed)")))),
@@ -787,7 +793,9 @@
       try {
         yt.info = await api("/api/youtube/info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
         yt.show();
-      } catch (e) { toast(e.message); }
+      } catch (e) {
+        if (e.code === "needs_cookies") { yt.retry = "info"; openSignin(e.message); } else toast(e.message);
+      }
       finally { btn.disabled = false; btn.textContent = "Find video"; }
     },
     show() {
@@ -866,7 +874,8 @@
           download(`/api/jobs/${j.id}/download`);
           yt.history.unshift({ id: j.id, info: job.info, file: j.file });
           yt.renderHistory();
-        } else if (j.status === "error") toast(j.error || "The download failed.");
+        } else if (j.status === "error" && j.code === "needs_cookies") { yt.retry = "download"; openSignin(j.error); }
+        else if (j.status === "error") toast(j.error || "The download failed.");
       }
     },
     renderHistory() {
@@ -900,6 +909,67 @@
   $$(".kind-btn").forEach((b) => b.addEventListener("click", () => yt.setKind(b.dataset.kind)));
   $("#ytDownload").addEventListener("click", () => yt.start());
   $("#ytCancel").addEventListener("click", () => { if (yt.job) fetch(`/api/jobs/${yt.job.id}`, { method: "DELETE" }); });
+
+  // ---- YouTube sign-in (cookies) ----
+  function renderSignin() {
+    const on = !!state.cat.youtube.signed_in;
+    const st = $("#ytSigninState");
+    st.textContent = on ? "Signed in to YouTube" : (state.cat.youtube.server_signin ? "Using this server's YouTube sign-in" : "");
+    st.classList.toggle("on", on || !!state.cat.youtube.server_signin);
+    $("#ytSigninOpen").textContent = on ? "Manage sign-in" : "YouTube says \"confirm you're not a bot\"?";
+    $("#ytCookieRemove").hidden = !on;
+    $("#ytCookieBtn").textContent = on ? "Upload a fresh cookies.txt" : "Upload cookies.txt";
+  }
+  function openSignin(message) {
+    const panel = $("#ytSignin"), alert = $("#signinAlert");
+    alert.hidden = !message;
+    alert.textContent = message || "";
+    panel.hidden = false;
+    $("#ytSigninOpen").setAttribute("aria-expanded", "true");
+    panel.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  }
+  function closeSignin() {
+    $("#ytSignin").hidden = true;
+    $("#ytSigninOpen").setAttribute("aria-expanded", "false");
+  }
+  $("#ytSigninOpen").addEventListener("click", () => ($("#ytSignin").hidden ? openSignin() : closeSignin()));
+  $("#ytSigninClose").addEventListener("click", () => { closeSignin(); $("#ytSigninOpen").focus(); });
+  $("#ytCookieBtn").addEventListener("click", () => $("#ytCookieFile").click());
+  $("#ytCookieFile").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const btn = $("#ytCookieBtn");
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      await api("/api/youtube/cookies", { method: "POST", body: fd });
+      state.cat.youtube.signed_in = true;
+      closeSignin();
+      toast("Signed in to YouTube. Morph will use it for your downloads.", "info");
+      const again = yt.retry;
+      yt.retry = null;
+      if (again === "info") yt.fetchInfo();
+      else if (again === "download" && yt.info) yt.start();
+    } catch (err) {
+      const alert = $("#signinAlert");
+      alert.hidden = false;
+      alert.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      renderSignin();
+    }
+  });
+  $("#ytCookieRemove").addEventListener("click", async () => {
+    try {
+      await api("/api/youtube/cookies", { method: "DELETE" });
+      state.cat.youtube.signed_in = false;
+      renderSignin();
+      toast("Your YouTube sign-in was removed from Morph.", "info");
+    } catch (err) { toast(err.message); }
+  });
 
   function renderYtNotice() {
     const s = state.cat.youtube, box = $("#ytNotice"), lines = [];
@@ -1018,6 +1088,7 @@
     renderFormats();
     renderDev();
     renderYtNotice();
+    renderSignin();
     renderTools();
     yt.setKind("audio");
     go(location.pathname, false);

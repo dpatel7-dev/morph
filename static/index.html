@@ -153,7 +153,33 @@
               </div>
             </div>
           </div>
+          <div class="yt-foot">
+            <span class="signin-state" id="ytSigninState"></span>
+            <button class="text-btn" id="ytSigninOpen" type="button" aria-expanded="false" aria-controls="ytSignin">YouTube says "confirm you're not a bot"?</button>
+          </div>
         </div>
+
+        <section class="signin" id="ytSignin" hidden aria-labelledby="signinTitle">
+          <div class="signin-head">
+            <h2 id="signinTitle">Sign in to YouTube through Morph</h2>
+            <button class="icon-btn" id="ytSigninClose" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          </div>
+          <p class="signin-alert" id="signinAlert" hidden></p>
+          <p class="muted">YouTube blocks many cloud computers, including GitHub Codespaces, until they prove a real person is using them. Giving Morph your YouTube <em>cookies</em> (a small file that shows you're signed in) fixes this. They're only used for your own downloads, and you can remove them any time.</p>
+          <ol class="howto">
+            <li>Add the free <strong>Get cookies.txt LOCALLY</strong> extension to Chrome or Edge, or <strong>cookies.txt</strong> to Firefox.</li>
+            <li>In the extension's settings, turn on <strong>Allow in Incognito</strong> (in Firefox: <strong>Run in Private Windows</strong>).</li>
+            <li>Open a private window and sign in to YouTube. A spare Google account is safest.</li>
+            <li>While you're on youtube.com, click the extension and <strong>export</strong> the cookies. A <code>.txt</code> file downloads.</li>
+            <li>Close the private window <em>without</em> signing out, then upload the file here.</li>
+          </ol>
+          <div class="signin-actions">
+            <button class="btn primary" id="ytCookieBtn" type="button">Upload cookies.txt</button>
+            <button class="text-btn danger" id="ytCookieRemove" type="button" hidden>Remove my sign-in</button>
+            <input type="file" id="ytCookieFile" accept=".txt,text/plain" hidden>
+          </div>
+          <p class="hint">Morph keeps only the YouTube cookies from the file, stores them privately on this server, and uses them for nobody else. YouTube may limit accounts that download a lot, so a spare account is the safest choice. Exports stop working after a while; if the message comes back, export and upload a fresh file.</p>
+        </section>
       </div>
     </div>
     <div class="wrap narrow">

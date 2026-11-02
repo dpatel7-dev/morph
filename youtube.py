@@ -3,7 +3,16 @@ YouTube (and 1,000+ other sites) to MP3 / MP4 using yt-dlp.
 
 yt-dlp needs a JavaScript runtime (Deno is the default) to fully support
 YouTube — see README.md. Only download videos you have the right to keep.
+
+YouTube often blocks cloud computers (Codespaces, VPS hosts) with "Sign in to
+confirm you're not a bot". The fix is a signed-in account's cookies:
+  * each visitor can upload their own cookies.txt on the YouTube page, or
+  * the server owner can set MORPH_YT_COOKIES=/path/to/cookies.txt,
+    MORPH_YT_COOKIES_FROM_BROWSER=firefox (when Morph runs on the same computer
+    as the browser), or MORPH_YT_PROXY=http://user:pass@host:port.
 """
+import hashlib
+import os
 import re
 from pathlib import Path
 
@@ -15,6 +24,78 @@ VIDEO = {"mp4", "webm", "mkv"}
 URL_RE = re.compile(r"^https?://\S+$", re.I)
 
 
+class NeedsSignIn(ConversionError):
+    """YouTube wants proof of a real, signed-in person (the website then shows the sign-in steps)."""
+    code = "needs_cookies"
+
+
+# --------------------------------------------------------------------------
+# Cookies: one private file per visitor, holding only YouTube cookies
+# --------------------------------------------------------------------------
+
+COOKIE_DIR = Path(os.environ.get("MORPH_COOKIE_DIR") or Path.home() / ".morph" / "youtube-cookies")
+SERVER_COOKIES = os.environ.get("MORPH_YT_COOKIES") or None
+COOKIES_FROM_BROWSER = os.environ.get("MORPH_YT_COOKIES_FROM_BROWSER") or None
+PROXY = os.environ.get("MORPH_YT_PROXY") or None
+SIGNED_IN_NAMES = {"SID", "__Secure-1PSID", "__Secure-3PSID", "SAPISID", "__Secure-3PAPISID", "LOGIN_INFO"}
+MAX_COOKIE_BYTES = 2 * 1024 * 1024
+
+
+def _cookie_path(sid):
+    if not sid:
+        return None
+    return COOKIE_DIR / (hashlib.sha256(sid.encode()).hexdigest()[:40] + ".txt")
+
+
+def has_cookies(sid):
+    p = _cookie_path(sid)
+    return bool(p and p.exists())
+
+
+def save_cookies(sid, raw: bytes):
+    """Keep only youtube.com cookies from a Netscape cookies.txt export. Returns how many."""
+    if not sid:
+        raise ConversionError("Open the Morph website first, then upload your cookies there.")
+    if len(raw) > MAX_COOKIE_BYTES:
+        raise ConversionError("That file is too big to be a cookies.txt export.")
+    text = raw.decode("utf-8-sig", errors="replace")
+    keep = []
+    for line in text.splitlines():
+        line = line.rstrip("\r")
+        body = line[len("#HttpOnly_"):] if line.startswith("#HttpOnly_") else line
+        if not body or (body.startswith("#") and body is line):
+            continue
+        parts = body.split("\t")
+        if len(parts) != 7:
+            continue
+        domain = parts[0].lstrip(".").lower()
+        if domain == "youtube.com" or domain.endswith(".youtube.com"):
+            keep.append(line)
+    if not keep:
+        raise ConversionError("That file has no YouTube cookies in it. Export the cookies while you're on youtube.com, "
+                              "using the Netscape / cookies.txt format.")
+    names = {l.split("\t")[5] for l in keep}
+    if not names & SIGNED_IN_NAMES:
+        raise ConversionError("These YouTube cookies aren't from a signed-in account. Sign in to YouTube first, "
+                              "then export them again.")
+    COOKIE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(COOKIE_DIR, 0o700)
+    except OSError:
+        pass
+    path = _cookie_path(sid)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("# Netscape HTTP Cookie File\n" + "\n".join(keep) + "\n")
+    return len(keep)
+
+
+def remove_cookies(sid):
+    p = _cookie_path(sid)
+    if p and p.exists():
+        p.unlink()
+
+
 def status():
     ok = tools.has_module("yt_dlp")
     version = None
@@ -24,7 +105,7 @@ def status():
         except Exception:
             pass
     return {"installed": ok, "version": version, "js_runtimes": sorted(tools.js_runtimes()),
-            "ffmpeg": bool(tools.ffmpeg())}
+            "ffmpeg": bool(tools.ffmpeg()), "server_signin": bool(SERVER_COOKIES or COOKIES_FROM_BROWSER or PROXY)}
 
 
 class _Log:
@@ -44,7 +125,7 @@ class _Log:
         self.errors.append(re.sub(r"\x1b\[[0-9;]*m", "", str(msg)))
 
 
-def _base(log):
+def _base(log, sid=None):
     opts = {
         "quiet": True, "no_warnings": True, "noprogress": True, "noplaylist": True,
         "socket_timeout": 20, "retries": 3, "fragment_retries": 3, "windowsfilenames": True,
@@ -55,19 +136,36 @@ def _base(log):
     rt = tools.js_runtimes()
     if rt:
         opts["js_runtimes"] = {name: {"path": path} for name, path in rt.items()}
+    # A visitor's own sign-in wins; otherwise the server owner's settings apply
+    if has_cookies(sid):
+        opts["cookiefile"] = str(_cookie_path(sid))
+    elif SERVER_COOKIES:
+        opts["cookiefile"] = SERVER_COOKIES
+    elif COOKIES_FROM_BROWSER:
+        opts["cookiesfrombrowser"] = (COOKIES_FROM_BROWSER,)
+    if PROXY:
+        opts["proxy"] = PROXY
     return opts
 
 
-def _friendly(err, log):
-    text = (str(err) + " " + " ".join(log.errors)).lower()
-    if "sign in to confirm your age" in text or "age-restricted" in text:
-        return "This video is age-restricted, so YouTube won't hand it over without signing in."
+def _friendly(err, log, sid=None):
+    """Turn yt-dlp's error into a plain sentence. Sign-in problems raise NeedsSignIn."""
+    text = (str(err) + " " + " ".join(log.errors)).lower().replace("\u2019", "'")
+    signed_in = has_cookies(sid) or bool(SERVER_COOKIES or COOKIES_FROM_BROWSER)
+    if "sign in to confirm your age" in text or "age-restricted" in text or "inappropriate for some users" in text:
+        if signed_in:
+            return "This video is age-restricted, and the signed-in account isn't allowed to watch it."
+        raise NeedsSignIn("This video is age-restricted. Sign in to YouTube through Morph (steps below) to download it.")
+    if "sign in to confirm you" in text and "bot" in text:
+        if signed_in:
+            raise NeedsSignIn("YouTube still wants a sign-in. Your saved cookies have probably expired: "
+                              "export them again and upload the new file.")
+        raise NeedsSignIn("YouTube is blocking this server until it shows it's a real person. "
+                          "Sign in to YouTube through Morph (steps below), then try again.")
     if "private video" in text:
         return "This video is private."
     if "video unavailable" in text or "not available" in text:
         return "This video isn't available (it may be removed, private, or blocked in your country)."
-    if "sign in to confirm you" in text and "bot" in text:
-        return "YouTube is asking for a sign-in to prove you're not a bot. Wait a while and try again."
     if "unsupported url" in text:
         return "That link isn't supported. Paste a link to a single video."
     if "ffmpeg" in text and ("not found" in text or "not installed" in text):
@@ -88,22 +186,19 @@ def _require():
         raise ConversionError("yt-dlp isn't installed yet. Run: pip install -U \"yt-dlp[default]\"")
 
 
-def info(url):
+def info(url, sid=None):
     _require()
     from yt_dlp import YoutubeDL
-    from yt_dlp.utils import DownloadError
     url = (url or "").strip()
     if not URL_RE.match(url):
         raise ConversionError("Paste a full link that starts with https://")
     log = _Log()
-    opts = _base(log) | {"skip_download": True}
+    opts = _base(log, sid) | {"skip_download": True}
     try:
         with YoutubeDL(opts) as ydl:
             data = ydl.extract_info(url, download=False)
-    except DownloadError as e:
-        raise ConversionError(_friendly(e, log))
     except Exception as e:
-        raise ConversionError(_friendly(e, log))
+        raise ConversionError(_friendly(e, log, sid))
     if data.get("_type") in ("playlist", "multi_video"):
         entries = [e for e in (data.get("entries") or []) if e]
         if not entries:
@@ -144,7 +239,7 @@ def _format_for(fmt, quality):
     return f"bv*{lim}+ba/b{lim}/b"  # mkv takes anything
 
 
-def download(job, url, fmt, quality, cover, out_dir: Path):
+def download(job, url, fmt, quality, cover, out_dir: Path, sid=None):
     _require()
     from yt_dlp import YoutubeDL
     from yt_dlp.utils import DownloadCancelled, DownloadError
@@ -192,7 +287,7 @@ def download(job, url, fmt, quality, cover, out_dir: Path):
             }.get(d.get("postprocessor"), "Finishing…")
             job.update(0.93, label)
 
-    opts = _base(log) | {
+    opts = _base(log, sid) | {
         "format": _format_for(fmt, quality),
         "outtmpl": {"default": str(out_dir / "%(title).150B.%(ext)s")},
         "progress_hooks": [hook], "postprocessor_hooks": [pp_hook],
@@ -222,7 +317,7 @@ def download(job, url, fmt, quality, cover, out_dir: Path):
     except DownloadError as e:
         if job.cancelled:
             raise Cancelled()
-        raise ConversionError(_friendly(e, log))
+        raise ConversionError(_friendly(e, log, sid))
     if data.get("_type") in ("playlist", "multi_video"):
         data = next((e for e in data.get("entries") or [] if e), {})
     final = None

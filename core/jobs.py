@@ -34,6 +34,7 @@ class Job:
         self.progress = None        # 0..1, or None when unknown
         self.message = "Waiting in line…"
         self.error = None
+        self.code = None            # machine-readable error kind, e.g. "needs_cookies"
         self.result = None          # Path of the finished file
         self.created = time.time()
         self.finished = None
@@ -62,6 +63,7 @@ class Job:
         d = {
             "id": self.id, "kind": self.kind, "title": self.title, "status": self.status,
             "progress": self.progress, "message": self.message, "error": self.error, "note": self.note,
+            "code": self.code,
         }
         if self.result and self.result.exists():
             d["file"] = {"name": self.result.name, "size": self.result.stat().st_size}
@@ -110,6 +112,7 @@ def submit(job, fn, *args):
         except ConversionError as e:
             job.status = "error"
             job.error = str(e)
+            job.code = getattr(e, "code", None)
         except Exception as e:  # unexpected: keep the details in the console
             traceback.print_exc()
             job.status = "error"

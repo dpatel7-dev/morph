@@ -460,6 +460,46 @@ code, .cmd {
 .list .t { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list .s { display: block; font-weight: 400; font-size: 13.5px; color: var(--ink-3); }
 .fineprint { margin: 32px 0 48px; font-size: 13.5px; color: var(--ink-3); }
+.yt-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 16px 12px; border-top: 1px solid var(--line); }
+.signin-state { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.signin-state.on::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.yt-foot .text-btn { margin-left: auto; font-weight: 550; }
+
+/* Sign-in panel (YouTube cookies) */
+.signin {
+  margin-top: 16px;
+  padding: 20px 22px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.signin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.signin-head h2 { margin: 0; font-size: 19px; }
+.signin > p { margin: 8px 0 0; font-size: 15px; }
+.signin-alert {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border-left: 4px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+  color: var(--ink);
+  font-weight: 550;
+}
+.howto { margin: 16px 0 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 10px; }
+.howto li { counter-increment: step; position: relative; padding-left: 36px; font-size: 15px; color: var(--ink-2); line-height: 1.55; }
+.howto li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: 0;
+  display: grid; place-items: center;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  font-weight: 700; font-size: 13px;
+}
+.howto strong { color: var(--ink); font-weight: 650; }
+.signin-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 18px 0 4px; }
+.signin .hint { margin-top: 12px; }
+.text-btn.danger { color: var(--danger); }
 
 /* ---------- PDF tools ---------- */
 .tools-card { overflow: hidden; }
